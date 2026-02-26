@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>OG Tracker Pro</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Outfit', 'sans-serif'] },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                        'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
+                    },
+                    keyframes: {
+                        fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+                        slideUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+    
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { 
+            -webkit-tap-highlight-color: transparent; 
+            overscroll-behavior-y: none;
+            background-color: #0f172a; 
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .glass-panel { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+    </style>
+</head>
+<body class="antialiased transition-colors duration-500 selection:bg-indigo-500/30">
+    <div id="root"></div>
+
+    <!-- FIREBASE MODULE -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { 
+            getAuth, 
+            signInWithEmailAndPassword, 
+            createUserWithEmailAndPassword, 
+            signOut,
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // ==========================================
+        // PASTE YOUR FIREBASE CONFIG HERE
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
+        };
+
+        window.LucideIcons = lucide;
+
+        // Attach Firebase functions to window so React can use them
+        if (firebaseConfig.apiKey) {
+            try {
+                const app = initializeApp(firebaseConfig);
+                window.fbAuth = getAuth(app);
+                window.fbDb = getFirestore(app);
+                window.firebaseEnabled = true;
+                
+                // Export Auth functions
+                window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+                window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+                window.signOut = signOut;
+                window.onAuthStateChanged = onAuthStateChanged;
+                window.doc = doc;
+                window.setDoc = setDoc;
+                window.onSnapshot = onSnapshot;
+                
+            } catch (e) {
+                console.error("Firebase init failed:", e);
+                window.firebaseEnabled = false;
+            }
+        } else {
+            window.firebaseEnabled = false;
+            console.log("Running in Demo Mode. Add Firebase keys to enable Cloud Sync and Login.");
+        }
+    </script>
+
+    <!-- REACT APP MODULE -->
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        const { 
+            Flame, Dumbbell, Calendar, Menu, X, Check, 
+            Timer, Sun, Moon, ChevronLeft, ChevronRight, Activity, Zap, Star, LogOut, Mail, Lock
+        } = window.LucideIcons;
+
+        // --- DEFAULT ROUTINE DATA ---
+        const DEFAULT_ROUTINE = [
+            { id: 'w1', category: 'warmup', name: "Jumping Jacks", reps: "50", sets: 2, type: "reps" },
+            { id: 'w2', category: 'warmup', name: "High Knees", reps: "50", sets: 2, type: "reps" },
+            { id: 'w3', category: 'warmup', name: "Toe Touches", reps: "50", sets: 2, type: "reps" },
+            { id: 'm1', category: 'main', name: "Push-ups", reps: "15", sets: 3, type: "reps" },
+            { id: 'm2', category: 'main', name: "Squats", reps: "20", sets: 3, type: "reps" },
+            { id: 'm3', category: 'main', name: "Lunges", reps: "14", sets: 3, type: "reps" },
+            { id: 'm4', category: 'main', name: "Plank", reps: "60", sets: 3, type: "timer" },
+            { id: 'm5', category: 'main', name: "Dips", reps: "12", sets: 3, type: "reps" },
+            { id: 's1', category: 'stretching', name: "Cobra Stretch", reps: "30", sets: 1, type: "timer" },
+            { id: 's2', category: 'stretching', name: "Hamstring Stretch", reps: "30", sets: 1, type: "timer" },
+            { id: 's3', category: 'stretching', name: "Quad Stretch", reps: "30", sets: 1, type: "timer" }
+        ];
+      const CATEGORY_STYLES = {
+            warmup: {
+                title: "Warm Up", icon: Zap,
+                bg: "bg-amber-500/10 dark:bg-amber-500/5", border: "border-amber-500/20", text: "text-amber-600 dark:text-amber-400",
+                activeBtn: "bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-orange-500/30 border-transparent"
+            },
+            main: {
+                title: "Main Routine", icon: Dumbbell,
+                bg: "bg-indigo-500/10 dark:bg-indigo-500/5", border: "border-indigo-500/20", text: "text-indigo-600 dark:text-indigo-400",
+                activeBtn: "bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30 border-transparent"
+            },
+            stretching: {
+                title: "Cool Down", icon: Activity,
+                bg: "bg-emerald-500/10 dark:bg-emerald-500/5", border: "border-emerald-500/20", text: "text-emerald-600 dark:text-emerald-400",
+                activeBtn: "bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-lg shadow-emerald-500/30 border-transparent"
+            }
+        };
+
+        // --- AUTHENTICATION SCREEN COMPONENT ---
+        const AuthScreen = ({ isDark }) => {
+            const [isLogin, setIsLogin] = useState(true);
+            const [email, setEmail] = useState("");
+            const [password, setPassword] = useState("");
+            const [error, setError] = useState("");
+            const [loading, setLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError("");
+                setLoading(true);
+                
+                try {
+                    if (isLogin) {
+                        await window.signInWithEmailAndPassword(window.fbAuth, email, password);
+                    } else {
+                        await window.createUserWithEmailAndPassword(window.fbAuth, email, password);
+                    }
+                } catch (err) {
+                    setError(err.message.replace("Firebase: ", ""));
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className={`min-h-screen flex items-center justify-center p-6 ${isDark ? 'bg-[#0f172a] text-white' : 'bg-slate-50 text-slate-900'}`}>
+                    <div className="w-full max-w-sm animate-fade-in">
+                        <div className="flex justify-center mb-8">
+                            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-4 rounded-[2rem] text-white shadow-2xl shadow-indigo-500/30">
+                                <Star size={40} fill="currentColor" />
+                            </div>
+                        </div>
+                        
+                        <div className="text-center mb-10">
+                            <h1 className="text-4xl font-black uppercase tracking-tighter italic">OG Tracker</h1>
+                            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-2">Elite Training Log</p>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className={`p-8 rounded-[2.5rem] border shadow-2xl ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                            <h2 className="text-2xl font-black mb-6">{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
+                            
+                            {error && (
+                                <div className="mb-6 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold">
+                                    {error}
+                                </div>
+                            )}
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Email Address</label>
+                                    <div className={`flex items-center gap-3 p-4 rounded-2xl border ${isDark ? 'bg-slate-950 border-slate-800 focus-within:border-indigo-500' : 'bg-slate-50 border-slate-200 focus-within:border-indigo-500'} transition-colors`}>
+                                        <Mail size={18} className="text-slate-400" />
+                                        <input 
+                                            type="email" 
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            required
+                                            className="bg-transparent outline-none w-full font-bold"
+                                            placeholder="athlete@example.com"
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Password</label>
+                                    <div className={`flex items-center gap-3 p-4 rounded-2xl border ${isDark ? 'bg-slate-950 border-slate-800 focus-within:border-indigo-500' : 'bg-slate-50 border-slate-200 focus-within:border-indigo-500'} transition-colors`}>
+                                        <Lock size={18} className="text-slate-400" />
+                                        <input 
+                                            type="password" 
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            required
+                                            className="bg-transparent outline-none w-full font-bold"
+                                            placeholder="••••••••"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className="w-full mt-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black text-lg shadow-lg shadow-indigo-500/30 active:scale-95 transition-all disabled:opacity-50"
+                            >
+                                {loading ? 'Processing...' : (isLogin ? 'LOGIN' : 'SIGN UP')}
+                            </button>
+
+                            <div className="mt-6 text-center">
+                                <button 
+                                    type="button" 
+                                    onClick={() => { setIsLogin(!isLogin); setError(""); }}
+                                    className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-indigo-500 transition-colors"
+                                >
+                                    {isLogin ? "Need an account? Sign up" : "Already have an account? Log in"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- MAIN APP COMPONENT ---
+        const App = () => {
+            const [isDark, setIsDark] = useState(true);
+            const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+            
+            // App State
+            const [user, setUser] = useState(null);
+            const [authLoading, setAuthLoading] = useState(true);
+            const [logs, setLogs] = useState({});
+            
+            // Apply Theme
+            useEffect(() => {
+                if (isDark) document.documentElement.classList.add('dark');
+                else document.documentElement.classList.remove('dark');
+            }, [isDark]);
+
+            // Auth Listener
+            useEffect(() => {
+                if (window.firebaseEnabled) {
+                    const unsubscribe = window.onAuthStateChanged(window.fbAuth, (currentUser) => {
+                        setUser(currentUser);
+                        setAuthLoading(false);
+                    });
+                    return () => unsubscribe();
+                } else {
+                    setAuthLoading(false); // Demo mode bypasses auth
+                }
+            }, []);
+
+            // Data Sync
+            useEffect(() => {
+                let unsubLogs = () => {};
+                
+                if (window.firebaseEnabled && user) {
+                    const logsRef = window.doc(window.fbDb, "artifacts", "og-tracker", "users", user.uid, "logs", selectedDate);
+                    unsubLogs = window.onSnapshot(logsRef, snap => {
+                        setLogs(snap.exists() ? snap.data() : {});
+                    });
+                } else if (!window.firebaseEnabled) {
+                    // Demo Mode LocalStorage
+                    const localData = JSON.parse(localStorage.getItem(`og_${selectedDate}`) || '{}');
+                    setLogs(localData);
+                }
+
+                return () => unsubLogs();
+            }, [selectedDate, user]);
+
+            const handleLogout = async () => {
+                if (window.firebaseEnabled) {
+                    await window.signOut(window.fbAuth);
+                }
+            };
+
+            const toggleSet = async (exId, setIdx) => {
+                const exLogs = logs[exId] || [];
+                const newExLogs = [...exLogs];
+                newExLogs[setIdx] = !newExLogs[setIdx];
+                const newLogs = { ...logs, [exId]: newExLogs };
+                
+                setLogs(newLogs); // Optimistic UI update
+
+                if (window.firebaseEnabled && user) {
+                    const logsRef = window.doc(window.fbDb, "artifacts", "og-tracker", "users", user.uid, "logs", selectedDate);
+                    await window.setDoc(logsRef, newLogs);
+                } else if (!window.firebaseEnabled) {
+                    localStorage.setItem(`og_${selectedDate}`, JSON.stringify(newLogs));
+                }
+            };
+
+            const changeDate = (days) => {
+                const d = new Date(selectedDate);
+                d.setDate(d.getDate() + days);
+                setSelectedDate(d.toISOString().split('T')[0]);
+            };
+
+            const isToday = selectedDate === new Date().toISOString().split('T')[0];
+
+            // Render Loading State
+            if (authLoading) {
+                return <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-[#0f172a]' : 'bg-slate-50'}`}><div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>;
+      }
+          // Render Auth Screen if Firebase is enabled but user is not logged in
+            if (window.firebaseEnabled && !user) {
+                return <AuthScreen isDark={isDark} />;
+            }
+
+            // Render Exercise Groups
+            const renderCategory = (categoryKey) => {
+                const exercises = DEFAULT_ROUTINE.filter(e => e.category === categoryKey);
+                if (exercises.length === 0) return null;
+
+                const style = CATEGORY_STYLES[categoryKey];
+                const Icon = style.icon;
+
+                return (
+                    <div key={categoryKey} className="animate-slide-up mb-8">
+                        <div className="flex items-center gap-3 mb-4 px-2">
+                            <div className={`p-2 rounded-xl ${style.bg} ${style.text}`}>
+                                <Icon size={20} strokeWidth={2.5} />
+                            </div>
+                            <h3 className={`font-black text-xl tracking-tight uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                {style.title}
+                            </h3>
+                        </div>
+
+                        <div className="space-y-3">
+                            {exercises.map(ex => {
+                                const exLogs = logs[ex.id] || [];
+                                const isComplete = exLogs.filter(Boolean).length === ex.sets;
+
+                                return (
+                                    <div key={ex.id} className={`p-5 rounded-3xl border-2 transition-all duration-300 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'} ${isComplete ? 'opacity-60 scale-[0.98]' : 'hover:scale-[1.01]'}`}>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <div>
+                                                <h4 className={`font-bold text-lg leading-none mb-1 ${isComplete ? 'line-through text-slate-500' : (isDark ? 'text-slate-100' : 'text-slate-800')}`}>{ex.name}</h4>
+                                                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                                                    {ex.reps} {ex.type === 'timer' ? 'Secs' : 'Reps'}
+                                                </p>
+                                            </div>
+                                            {ex.type === 'timer' && (
+                                                <button className={`p-2 rounded-full ${style.bg} ${style.text}`}>
+                                                    <Timer size={18} />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-2">
+                                            {[...Array(parseInt(ex.sets))].map((_, i) => {
+                                                const isDone = exLogs[i];
+                                                return (
+                                                    <button
+                                                        key={i}
+                                                        onClick={() => toggleSet(ex.id, i)}
+                                                        className={`flex-1 min-w-[60px] h-12 rounded-2xl border-2 flex items-center justify-center font-black text-xs transition-all duration-200 active:scale-90 ${
+                                                            isDone 
+                                                            ? style.activeBtn 
+                                                            : (isDark ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500')
+                                                        }`}
+                                                    >
+                                                        {isDone ? <Check strokeWidth={4} size={16} /> : `SET ${i + 1}`}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className={`min-h-screen ${isDark ? 'bg-[#0f172a] text-white' : 'bg-slate-50 text-slate-900'} pb-28`}>
+                    
+                    {/* TOP HEADER */}
+                    <nav className={`fixed top-0 left-0 right-0 z-50 glass-panel border-b ${isDark ? 'bg-[#0f172a]/80 border-slate-800' : 'bg-white/80 border-slate-200'} px-5 py-4 flex justify-between items-center`}>
+                        <div className="flex items-center gap-2">
+                            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-1.5 rounded-xl text-white">
+                                <Star size={20} fill="currentColor" />
+                            </div>
+                            <h1 className="font-black text-xl tracking-tighter uppercase italic">OG Tracker</h1>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {window.firebaseEnabled && user && (
+                                <button onClick={handleLogout} className={`p-2.5 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-rose-400' : 'bg-rose-50 text-rose-500'}`}>
+                                    <LogOut size={18} strokeWidth={2.5} />
+                                </button>
+                            )}
+                            <button onClick={() => setIsDark(!isDark)} className={`p-2.5 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-yellow-400' : 'bg-slate-100 text-indigo-600'}`}>
+                                {isDark ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
+                            </button>
+                        </div>
+                    </nav>
+
+                    {/* MAIN CONTENT */}
+                    <main className="max-w-md mx-auto px-4 pt-24 pb-10">
+                        
+                        {/* DEMO BANNER */}
+                        {!window.firebaseEnabled && (
+                            <div className="mb-6 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold flex items-center gap-3">
+                                <Activity size={24} className="shrink-0 animate-pulse" />
+                                <p>Running in Demo Mode. Edit the HTML file to add your Firebase Config to enable Email Login and Cloud Sync.</p>
+                            </div>
+                        )} {/* DATE SELECTOR CARD */}
+                        <div className={`mb-8 p-6 rounded-[2rem] shadow-2xl relative overflow-hidden ${isToday ? 'bg-gradient-to-br from-indigo-600 to-purple-700 text-white' : (isDark ? 'bg-slate-800 text-white' : 'bg-white border-2 border-slate-200 text-slate-900')}`}>
+                            <div className="relative z-10 flex justify-between items-center">
+                                <div>
+                                    <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${isToday ? 'text-indigo-200' : 'text-slate-400'}`}>Target Date</p>
+                                    <h2 className="text-3xl font-black tracking-tight">{isToday ? 'TODAY' : selectedDate}</h2>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={() => changeDate(-1)} className={`p-3 rounded-2xl transition-all active:scale-90 ${isToday ? 'bg-white/20 hover:bg-white/30' : (isDark ? 'bg-slate-700' : 'bg-slate-100')}`}><ChevronLeft size={20} /></button>
+                                    <button onClick={() => changeDate(1)} className={`p-3 rounded-2xl transition-all active:scale-90 ${isToday ? 'bg-white/20 hover:bg-white/30' : (isDark ? 'bg-slate-700' : 'bg-slate-100')}`}><ChevronRight size={20} /></button>
+                                </div>
+                            </div>
+                            <Calendar size={140} className={`absolute -bottom-8 -right-8 opacity-10 ${isToday ? 'text-white' : ''}`} />
+                        </div>
+
+                        {/* EXERCISE SECTIONS */}
+                        {renderCategory('warmup')}
+                        {renderCategory('main')}
+                        {renderCategory('stretching')}
+                        
+                    </main>
+
+                    {/* FLOATING BOTTOM NAV */}
+                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm">
+                        <div className={`glass-panel p-2 rounded-[2rem] border shadow-2xl flex justify-between items-center ${isDark ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'}`}>
+                            <button className={`flex-1 py-3 rounded-[1.5rem] flex flex-col items-center gap-1 transition-all bg-indigo-500 text-white shadow-lg shadow-indigo-500/30`}>
+                                <Dumbbell size={20} />
+                                <span className="text-[9px] font-black uppercase tracking-widest">Workout</span>
+                            </button>
+                            <button className={`flex-1 py-3 rounded-[1.5rem] flex flex-col items-center gap-1 transition-all ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-indigo-600'}`}>
+                                <Calendar size={20} />
+                                <span className="text-[9px] font-black uppercase tracking-widest">History</span>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
